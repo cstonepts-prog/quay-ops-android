@@ -1,64 +1,50 @@
-# Quay for Android
+# Quay FTP for Android
 
-FTP operations console as a native Android APK with **background queue and scheduling**.
+**Real FTP / FTPS client** with transfer queue, scheduling, folder sync, and delete-after-send.
+Transfers run in a foreground service so they continue in the background.
 
-## Download the APK
+## Features
 
-1. Open **[Actions](../../actions)** → workflow **Build Quay APK**
-2. Open the latest successful run
-3. Download the artifact **`quay-ops-debug`**
-4. Unzip → install `app-debug.apk` on your device
+- **FTP** and **FTPS** (explicit TLS + implicit) — pure Java, no third-party FTP libraries
+- Dual-pane local / remote browser
+- Upload & download with live progress
+- **Folder sync** (upload or download tree, skip same-size files)
+- **Delete after send** on uploads and sync-up
+- **Queue** with pause / resume / cancel
+- **Schedules** — once, hourly, daily, weekly
+- Background **foreground service** + boot restart
+- First-run installer wizard
 
-Or trigger a build manually: **Actions → Build Quay APK → Run workflow**.
+## Download APK
 
-## What you get
-
-| Piece | Role |
-|-------|------|
-| **MainActivity** | Full-screen WebView hosting the Quay console |
-| **QuayService** | Foreground service — keeps transfers alive when the UI is backgrounded |
-| **BootReceiver** | Restarts the service after reboot (optional) |
-| **QuayBridge** | `window.QuayNative` JS bridge for platform + toasts |
-| **assets/www** | The full Quay web app (queue, schedules, fleet, installer) |
-
-### Background behaviour
-
-- Sticky notification: **Quay · transferring** / **Quay · background**
-- Partial wake lock while jobs are active
-- Battery-optimisation exemption request on first launch
-- Service type: `dataSync` (Android 14+)
-- Status polled from the JS engine every ~2.5s via `window.__quayStatus()`
+1. Open [Actions](https://github.com/cstonepts-prog/quay-ops-android/actions)
+2. Open the latest green **Build Quay APK** run
+3. Download the **quay-ops-debug** artifact
 
 ## Build locally
 
 ```bash
-# Point at your SDK
-echo "sdk.dir=$HOME/Android/Sdk" > local.properties
-
-gradle :app:assembleDebug
-# or Android Studio → Build → Build APK(s)
+echo "sdk.dir=$ANDROID_HOME" > local.properties
+./gradlew :app:assembleDebug
+# APK: app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Output: `app/build/outputs/apk/debug/app-debug.apk`
+## Architecture
 
-```bash
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
+| Layer | Role |
+|-------|------|
+| `ftp/FtpClient` | Pure-Java FTP/FTPS (PASV, LIST/MLSD, RETR, STOR) |
+| `engine/TransferEngine` | Queue processor, sync, schedules |
+| `QuayService` | Foreground service + wake lock |
+| `QuayBridge` | `window.QuayNative.*` JS API |
+| `assets/www` | UI (vanilla HTML/CSS/JS) |
 
-## Package id
+## Usage
 
-`com.quay.ops` · minSdk 26 · targetSdk 34
+1. **Sites** → add host, port, FTP or FTPS, credentials → **Test**
+2. **Browser** → select site → Connect → pick local/remote files
+3. Upload / Download / Sync folder (optional **Delete after send**)
+4. **Queue** shows live progress; service keeps running when app is backgrounded
+5. **Schedules** for recurring jobs
 
-## Permissions
-
-- `INTERNET`, `ACCESS_NETWORK_STATE`
-- `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`
-- `POST_NOTIFICATIONS`, `WAKE_LOCK`
-- `RECEIVE_BOOT_COMPLETED`
-- `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`
-
-## Notes
-
-- Transfers are simulated in-browser (same engine as the web app). The service keeps the process and engine alive under a foreground notification.
-- For real FTP sockets you would add a native client (e.g. Apache Commons Net / JSch) and call it from the bridge; the UI and queue model already match that shape.
-- First launch shows the intelligent installer wizard.
+Local files default to the app Downloads directory.

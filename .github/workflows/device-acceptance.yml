@@ -47,11 +47,16 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$GITHUB_WORKSPACE/.codedump2/capacitor-reject-throwable-fix.patch"
+          BACK_PATCH="$GITHUB_WORKSPACE/.codedump2/android-back-fix.patch"
           echo "07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba  $PATCH" | sha256sum -c -
+          echo "7b6d4a315e3e33f822fbb36024ac100d5101d1043a667d3f3e50f42a03765653  $BACK_PATCH" | sha256sum -c -
           cd /tmp/cdt-build
           patch --batch -p1 < "$PATCH"
+          patch --batch -p1 < "$BACK_PATCH"
           grep -q 'private fun rejectionException(t: Throwable): Exception' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
           ! grep -q 'takePersistableUriPermission(uri, take)' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          grep -q 'OnBackPressedCallback' native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q '__codeDumpHandleAndroidBack' web/app.js
 
       - name: Set up Node 22
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

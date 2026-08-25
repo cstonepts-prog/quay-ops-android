@@ -117,6 +117,19 @@ if old not in s:
     raise SystemExit('Share interaction source pattern missing')
 s = s.replace(old, visible_loop_share, 1)
 
+old = '''printf 'Code Dump VIEW intent fixture\n' | adb shell run-as "$PKG" sh -c 'cat > cache/CodeDumpView.txt'
+printf 'Code Dump SEND intent fixture\n' | adb shell run-as "$PKG" sh -c 'cat > cache/CodeDumpSend.txt'
+adb shell run-as "$PKG" ls -l cache/CodeDumpView.txt cache/CodeDumpSend.txt > "$EVID/fileprovider-fixtures.txt"
+'''
+new = '''APP_DATA="/data/user/0/$PKG"
+printf 'Code Dump VIEW intent fixture\n' | adb shell run-as "$PKG" sh -c "cat > $APP_DATA/cache/CodeDumpView.txt"
+printf 'Code Dump SEND intent fixture\n' | adb shell run-as "$PKG" sh -c "cat > $APP_DATA/cache/CodeDumpSend.txt"
+adb shell run-as "$PKG" ls -l "$APP_DATA/cache/CodeDumpView.txt" "$APP_DATA/cache/CodeDumpSend.txt" > "$EVID/fileprovider-fixtures.txt"
+'''
+if old not in s:
+    raise SystemExit('VIEW/SEND cache fixture source pattern missing')
+s = s.replace(old, new, 1)
+
 p.write_text(s)
 PY
 grep -q "tap_node 'continueZip'" "$TMP"
@@ -126,4 +139,5 @@ grep -q "resource-id') != 'downloadDump'" "$TMP"
 grep -q "tap_node 'android:id/button1'" "$TMP"
 grep -q "app resumed after native save confirmation" "$TMP"
 grep -q "resource-id') != 'shareDump'" "$TMP"
+grep -q 'APP_DATA="/data/user/0/$PKG"' "$TMP"
 bash "$TMP"

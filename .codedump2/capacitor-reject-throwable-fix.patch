@@ -1,0 +1,114 @@
+--- a/native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
++++ b/native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+@@ -80,7 +80,7 @@
+                 val entry = cacheUri(uri, queryDisplayName(uri), null, maxBytes = requestedMaxBytes(call))
+                 call.resolve(JSObject().put("entry", entry))
+             } catch (t: Throwable) {
+-                call.reject("Could not read selected file: ${t.message}", t)
++                call.reject("Could not read selected file: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -122,7 +122,7 @@
+                 }
+                 call.resolve(JSObject().put("entries", entries))
+             } catch (t: Throwable) {
+-                call.reject("Could not read selected files: ${t.message}", t)
++                call.reject("Could not read selected files: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -156,7 +156,7 @@
+                 walkTree(root, "", importRoot, entries, traversal, 0, requestedMaxBytes(call))
+                 call.resolve(JSObject().put("entries", entries))
+             } catch (t: Throwable) {
+-                call.reject("Could not read selected directory: ${t.message}", t)
++                call.reject("Could not read selected directory: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -183,7 +183,7 @@
+             context.contentResolver.takePersistableUriPermission(uri, take)
+             call.resolve(JSObject().put("treeUri", uri.toString()))
+         } catch (t: Throwable) {
+-            call.reject("Could not retain access to selected directory: ${t.message}", t)
++            call.reject("Could not retain access to selected directory: ${t.message}", rejectionException(t))
+         }
+     }
+ 
+@@ -217,7 +217,7 @@
+                 }
+                 call.resolve()
+             } catch (t: Throwable) {
+-                call.reject("Could not write reconstructed file: ${t.message}", t)
++                call.reject("Could not write reconstructed file: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -234,7 +234,7 @@
+                 exports[sessionId] = ExportSession(FileOutputStream(file), "share", file)
+                 call.resolve(JSObject().put("sessionId", sessionId))
+             } catch (t: Throwable) {
+-                call.reject("Could not create export session: ${t.message}", t)
++                call.reject("Could not create export session: ${t.message}", rejectionException(t))
+             }
+             return
+         }
+@@ -261,7 +261,7 @@
+             exports[sessionId] = ExportSession(stream, "save", uri = uri)
+             call.resolve(JSObject().put("sessionId", sessionId))
+         } catch (t: Throwable) {
+-            call.reject("Could not create output file: ${t.message}", t)
++            call.reject("Could not create output file: ${t.message}", rejectionException(t))
+         }
+     }
+ 
+@@ -277,7 +277,7 @@
+             } catch (t: Throwable) {
+                 val failed = exports.remove(sessionId)
+                 cleanupExportSession(failed)
+-                call.reject("Could not write export chunk: ${t.message}", t)
++                call.reject("Could not write export chunk: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -293,7 +293,7 @@
+             call.resolve()
+         } catch (t: Throwable) {
+             cleanupExportSession(session)
+-            call.reject("Could not finish export: ${t.message}", t)
++            call.reject("Could not finish export: ${t.message}", rejectionException(t))
+         }
+     }
+ 
+@@ -338,7 +338,7 @@
+                 lastQueuedIntentUri = uri.toString()
+                 call.resolve(JSObject().put("entry", entry))
+             } catch (t: Throwable) {
+-                call.reject("Could not open launch file: ${t.message}", t)
++                call.reject("Could not open launch file: ${t.message}", rejectionException(t))
+             }
+         }
+     }
+@@ -415,6 +415,8 @@
+         }
+     }
+ 
++    private fun rejectionException(t: Throwable): Exception = t as? Exception ?: RuntimeException(t)
++
+     private fun requestedMaxBytes(call: PluginCall): Long {
+         val requested = call.getDouble("maxBytes")?.toLong() ?: absoluteNativeImportLimitBytes
+         return requested.coerceIn(1L, absoluteNativeImportLimitBytes)
+--- a/tests/android_conversion_static.test.js
++++ b/tests/android_conversion_static.test.js
+@@ -40,6 +40,10 @@
+ }
+ pass('native bridge exposes the full picker/storage/export/share/clipboard/intent contract');
+ 
++assert.ok(plugin.includes('private fun rejectionException(t: Throwable): Exception'));
++assert.ok(!/call\.reject\([^\n]*,\s*t\)/.test(plugin));
++pass('Capacitor rejection paths convert Throwable values to Exception-compatible causes');
++
+ assert.ok(plugin.includes('Intent.ACTION_OPEN_DOCUMENT'));
+ assert.ok(plugin.includes('Intent.EXTRA_ALLOW_MULTIPLE'));
+ assert.ok(plugin.includes('Intent.ACTION_OPEN_DOCUMENT_TREE'));

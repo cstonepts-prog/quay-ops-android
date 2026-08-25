@@ -10,30 +10,3 @@ diff --git a/native/android-overlay/app/src/main/java/app/codedump/tool/CodeDump
      }
  
      private fun cachedEntryMetadata(uri: Uri, name: String, relativePath: String?, cachedUri: String, size: Long, tooLarge: Boolean): JSObject = JSObject().apply {
-diff --git a/tests/android_conversion_static.test.js b/tests/android_conversion_static.test.js
---- a/tests/android_conversion_static.test.js
-+++ b/tests/android_conversion_static.test.js
-@@ -35,6 +35,11 @@
- assert.ok(activity.indexOf('registerPlugin(CodeDumpNativePlugin::class.java)') < activity.indexOf('super.onCreate(savedInstanceState)'));
- pass('custom Kotlin plugin is registered before BridgeActivity creates the Capacitor bridge');
- 
-+assert.ok(activity.includes('OnBackPressedCallback'));
-+assert.ok(activity.includes('window.__codeDumpHandleAndroidBack'));
-+assert.ok(app.includes('window.__codeDumpHandleAndroidBack = handleAndroidBack'));
-+pass('Android Back is offered to the web modal layer before default Activity navigation');
-+
- for (const method of ['pickFile','pickFiles','pickDirectory','pickOutputDirectory','writeTextFile','beginExport','appendExportChunk','finishExport','abortExport','shareText','copyText','getLaunchIntent']) {
-   assert.ok(plugin.includes(`fun ${method}(call: PluginCall)`), `missing ${method}`);
- }
-@@ -66,6 +71,11 @@
- assert.ok(plugin.includes('Drive paths are not allowed'));
- pass('native folder import/output enforce entry and logical-path safety boundaries');
- 
-+assert.ok(plugin.includes('Uri.fromFile(dest).toString()'));
-+assert.ok(!plugin.includes('dest.toURI().toString()'));
-+assert.ok(platform.includes('capacitor.convertFileSrc'));
-+pass('native cached files use Android file:/// URIs compatible with Capacitor convertFileSrc');
-+
- assert.ok(platform.includes('const CHUNK_SIZE = 512 * 1024'));
- assert.ok(platform.includes('appendExportChunk'));
- assert.ok(plugin.includes('Base64.decode(data, Base64.DEFAULT)'));

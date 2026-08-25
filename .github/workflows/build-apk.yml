@@ -1,16 +1,16 @@
-name: Code Dump Tool R4 Hardened APK Build
+name: Code Dump Tool EXEC002 R5 Android Build
 
 on:
   push:
     branches:
-      - codedump-r4-apk-rebuild-25082026
+      - codedump-exec002-r5-build-25082026
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: codedump-r4-apk-rebuild
+  group: codedump-exec002-r5-build
   cancel-in-progress: true
 
 env:
@@ -23,7 +23,7 @@ jobs:
 
     steps:
       - name: Checkout isolated build branch
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -63,25 +63,31 @@ jobs:
           echo "Audited Android patch: PASS"
 
       - name: Set up Node 22
-        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
 
       - name: Set up Java 21
-        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
 
-      - name: Install Android SDK API 36 and build tools
+      - name: Install Android SDK API 36 and Build Tools 36.0.0
         shell: bash
         run: |
           set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
 
       - name: Set up Gradle and validate wrapper
         uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
@@ -109,14 +115,13 @@ jobs:
           done
           test -s native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
           grep -q 'private fun rejectionException(t: Throwable): Exception' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
-          grep -q 'Manifest.permission' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt || true
           if test -f tests/android_conversion_static.test.js; then
             node tests/android_conversion_static.test.js
           fi
           if test -f web/tests/core.test.js; then
             npm test
           else
-            echo 'Historical build payload omits web/tests; full R4 repository regression was executed before packaging.'
+            echo 'Historical build transport omits web/tests; full EXEC002 R5 repository regression is executed separately.'
           fi
           echo 'Packaged source invariant verification: PASS'
 
@@ -154,9 +159,9 @@ jobs:
 
       - name: Upload Gradle diagnostics on failure
         if: failure() && steps.gradle_gate.conclusion == 'failure'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: code-dump-tool-r4-gradle-failure-${{ github.run_number }}
+          name: code-dump-tool-exec002-r5-gradle-failure-${{ github.run_number }}
           path: /tmp/gradle-build.log
           if-no-files-found: error
           retention-days: 7
@@ -167,7 +172,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          cp /tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk artifacts/code-dump-tool-r4-debug.apk
+          cp /tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk artifacts/code-dump-tool-exec002-r5-debug.apk
           find /tmp/cdt-build/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
           find /tmp/cdt-build/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
           cp /tmp/cdt-build/package-lock.json artifacts/package-lock.json
@@ -176,17 +181,23 @@ jobs:
           fi
           (cd artifacts && sha256sum *.apk *.aab package-lock.json 2>/dev/null | sort > SHA256SUMS.txt)
           cat artifacts/SHA256SUMS.txt
-          printf 'baseline_source_sha256=%s\nandroid_patch_sha256=%s\npackage_lock_sha256=%s\ncommit=%s\nrun=%s\n' \
+          printf 'baseline_source_sha256=%s\nandroid_patch_sha256=%s\npackage_lock_sha256=%s\ncheckout=%s\nsetup_node=%s\nsetup_java=%s\nsetup_android=%s\nsetup_gradle=%s\nupload_artifact=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
             '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
             '60844314cd4a6da894912049390740425baf80d31766c12b2bc559f4e5d5651c' \
+            'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \
+            'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020' \
+            'actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961' \
+            'android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699' \
+            'gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb' \
+            'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" > artifacts/BUILD_EVIDENCE.txt
 
       - name: Upload verified Android artifacts
         if: success()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: code-dump-tool-r4-${{ github.run_number }}
+          name: code-dump-tool-exec002-r5-${{ github.run_number }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30

@@ -1,0 +1,135 @@
+--- a/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
++++ b/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+@@ -8,4 +8,26 @@
+         registerPlugin(CodeDumpNativePlugin::class.java)
+         super.onCreate(savedInstanceState)
+     }
++
++    @Suppress("DEPRECATION")
++    override fun onBackPressed() {
++        val webView = bridge?.webView
++        if (webView == null) {
++            fallbackBack()
++            return
++        }
++
++        webView.evaluateJavascript(
++            "Boolean(window.__codeDumpHandleNativeBack && window.__codeDumpHandleNativeBack())"
++        ) { handled ->
++            if (handled != "true") {
++                runOnUiThread { fallbackBack() }
++            }
++        }
++    }
++
++    @Suppress("DEPRECATION")
++    private fun fallbackBack() {
++        super.onBackPressed()
++    }
+ }
+--- a/scripts/prepare-android.mjs
++++ b/scripts/prepare-android.mjs
+@@ -6,6 +6,7 @@
+ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+ const androidDir = path.join(root, 'android');
+ const overlay = path.join(root, 'native', 'android-overlay');
++const packageMeta = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+ 
+ function run(cmd, args, cwd = root) {
+   console.log(`> ${cmd} ${args.join(' ')}`);
+@@ -65,6 +66,9 @@
+   if (!out.includes("jvmTarget = '21'")) {
+     out = out.replace(/android \{\n/, "android {\n    kotlinOptions {\n        jvmTarget = '21'\n    }\n");
+   }
++  const versionNamePattern = /versionName\s+["'][^"']+["']/;
++  if (!versionNamePattern.test(out)) throw new Error('Generated Android app/build.gradle has no versionName to patch.');
++  out = out.replace(versionNamePattern, `versionName "${packageMeta.version}"`);
+   return out;
+ });
+ 
+--- a/tests/android_conversion_static.test.js
++++ b/tests/android_conversion_static.test.js
+@@ -35,6 +35,14 @@
+ assert.ok(activity.indexOf('registerPlugin(CodeDumpNativePlugin::class.java)') < activity.indexOf('super.onCreate(savedInstanceState)'));
+ pass('custom Kotlin plugin is registered before BridgeActivity creates the Capacitor bridge');
+ 
++assert.ok(activity.includes('override fun onBackPressed()'));
++assert.ok(activity.includes('__codeDumpHandleNativeBack'));
++assert.ok(activity.includes('fallbackBack()'));
++assert.ok(app.includes('function handleNativeBack()'));
++assert.ok(app.includes('window.__codeDumpHandleNativeBack = handleNativeBack'));
++assert.ok(app.includes('if (state.openSheetId)'));
++pass('Android Back closes an open app sheet before falling back to normal activity navigation');
++
+ for (const method of ['pickFile','pickFiles','pickDirectory','pickOutputDirectory','writeTextFile','beginExport','appendExportChunk','finishExport','abortExport','shareText','copyText','getLaunchIntent']) {
+   assert.ok(plugin.includes(`fun ${method}(call: PluginCall)`), `missing ${method}`);
+ }
+@@ -122,9 +130,13 @@
+ assert.ok(prepare.includes("androidx.documentfile:documentfile:1.1.0"));
+ assert.ok(prepare.includes("sourceCompatibility JavaVersion.VERSION_21"));
+ assert.ok(prepare.includes("jvmTarget = '21'"));
++assert.equal(pkg.version, '1.1.0');
++assert.ok(prepare.includes("const packageMeta = JSON.parse"));
++assert.ok(prepare.includes('const versionNamePattern = /versionName'));
++assert.ok(prepare.includes('`versionName \"${packageMeta.version}\"`'));
+ assert.ok(prepare.includes("['cap', 'add', 'android']"));
+ assert.ok(prepare.includes("['cap', 'copy', 'android']"));
+-pass('Android generator pins Kotlin/native dependencies and Java/Kotlin 21 while using Capacitor generation/copy flow');
++pass('Android generator pins native build dependencies, Java/Kotlin 21 and product versionName while using Capacitor generation/copy flow');
+ 
+ assert.ok(prepare.includes("icon-512.png"));
+ assert.ok(prepare.includes("code_dump_icon.png"));
+--- a/web/app.js
++++ b/web/app.js
+@@ -8,6 +8,7 @@
+   const DB_VERSION = 1;
+   const WORKSPACE_KEY = 'workspace-v2';
+   const LEGACY_WORKSPACE_KEY = 'workspace-v1';
++  const FILE_LIST_VIRTUAL_THRESHOLD = 250;
+ 
+   const state = {
+     mode: 'extract',
+@@ -243,7 +244,7 @@
+   }
+ 
+   function virtualWindow(rows) {
+-    const threshold = 250;
++    const threshold = FILE_LIST_VIRTUAL_THRESHOLD;
+     if (rows.length <= threshold) return { rows, start: 0, top: 0, bottom: 0, virtual: false };
+     const rowHeight = 56;
+     const overscan = 8;
+@@ -571,7 +572,7 @@
+       <div class="search-row"><input id="fileSearch" class="search-input" type="search" value="${escapeHtml(state.search)}" placeholder="Search paths…" aria-label="Search files"><select id="fileSort" class="sort-select" aria-label="Sort files"${state.viewMode === 'tree' ? ' disabled' : ''}><option value="path"${state.sort === 'path' ? ' selected' : ''}>Path</option><option value="language"${state.sort === 'language' ? ' selected' : ''}>Language</option><option value="size"${state.sort === 'size' ? ' selected' : ''}>Size</option></select></div>
+       ${renderFilterBar()}
+       ${mode === 'create' ? `<div class="selection-actions"><button id="selectAll" class="btn text compact" type="button">All eligible</button><button id="selectVisible" class="btn text compact" type="button">Visible eligible</button><button id="selectNone" class="btn text compact" type="button">None</button></div>` : ''}
+-      <div id="fileList" class="file-list${state.viewMode === 'tree' ? ' tree-list' : ''}" data-virtualised="${virtualCount > 250 ? 'true' : 'false'}">${renderFileRows(mode)}</div>
++      <div id="fileList" class="file-list${state.viewMode === 'tree' ? ' tree-list' : ''}" data-virtualised="${virtualCount > FILE_LIST_VIRTUAL_THRESHOLD ? 'true' : 'false'}">${renderFileRows(mode)}</div>
+     </section>`;
+   }
+ 
+@@ -734,7 +735,7 @@
+     if (!list) return;
+     list.innerHTML = renderFileRows(state.mode);
+     const rowCount = state.viewMode === 'tree' ? flattenTree(visibleFiles()).length : visibleFiles().length;
+-    list.dataset.virtualised = String(rowCount > 400);
++    list.dataset.virtualised = String(rowCount > FILE_LIST_VIRTUAL_THRESHOLD);
+     list.scrollTop = state.treeScrollTop || 0;
+   }
+ 
+@@ -1459,6 +1460,16 @@
+     }, 160);
+   }
+ 
++  function handleNativeBack() {
++    if (state.openSheetId) {
++      closeSheet(state.openSheetId);
++      return true;
++    }
++    return false;
++  }
++
++  window.__codeDumpHandleNativeBack = handleNativeBack;
++
+   function handleModalKeydown(event) {
+     if (!state.openSheetId) return;
+     const backdrop = $(state.openSheetId);

@@ -44,7 +44,7 @@ sleep 3
 capture 09-native-save-picker
 adb shell dumpsys activity activities | tr -d '\r' | grep -E 'mResumedActivity|topResumedActivity' | grep -Eiq 'documentsui|DocumentsActivity|com\.google\.android\.documentsui|com\.android\.documentsui' || fail 'native save picker top-resumed'
 pass 'native save picker opened and top-resumed'
-tap_node 'Save' || fail 'native save confirmation targetable'
+tap_node 'android:id/button1' || fail 'native SAVE button targetable'
 '''
 old = '''adb shell input swipe 540 1850 540 850 500 || true
 sleep 2
@@ -58,6 +58,18 @@ tap_node 'Save' || fail 'native save confirmation targetable'
 if old not in s:
     raise SystemExit('Save interaction source pattern missing')
 s = s.replace(old, visible_loop_download, 1)
+
+old = '''sleep 5
+top_has_app
+capture 09b-native-save-return
+'''
+new = '''sleep 5
+top_has_app || fail 'app resumed after native save confirmation'
+capture 09b-native-save-return
+'''
+if old not in s:
+    raise SystemExit('Post-save resume source pattern missing')
+s = s.replace(old, new, 1)
 
 visible_loop_share = r'''SHARE_VISIBLE=0
 for _ in $(seq 1 24); do
@@ -97,6 +109,7 @@ p.write_text(s)
 PY
 grep -q "tap_node 'continueZip'" "$TMP"
 grep -q "resource-id') != 'downloadDump'" "$TMP"
-grep -q "native save picker top-resumed" "$TMP"
+grep -q "tap_node 'android:id/button1'" "$TMP"
+grep -q "app resumed after native save confirmation" "$TMP"
 grep -q "resource-id') != 'shareDump'" "$TMP"
 bash "$TMP"

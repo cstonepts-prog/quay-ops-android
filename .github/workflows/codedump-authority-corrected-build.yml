@@ -69,13 +69,14 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$GITHUB_WORKSPACE/.codedump3/authority-corrected-runtime.patch"
-          echo "115b9e3e1c1d7480fc49822bbafc512ab91ea7a41f1053dce4ea1bc414775b7a  $PATCH" | sha256sum -c -
+          echo "8210517fa2f7da55dccd86c51f9e8eedd4be9fb6481e848058f1d1bbe8126251  $PATCH" | sha256sum -c -
           cd /tmp/cdt-build
           patch --batch -p1 < "$PATCH"
           grep -q 'const FILE_LIST_VIRTUAL_THRESHOLD = 250' web/app.js
           ! grep -q 'rowCount > 400' web/app.js
           grep -q '__codeDumpHandleNativeBack' web/app.js
-          grep -q 'override fun onBackPressed()' native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q 'onBackPressedDispatcher.addCallback' native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q 'OnBackPressedCallback' native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
           grep -q 'const packageMeta = JSON.parse' scripts/prepare-android.mjs
           grep -q 'const versionNamePattern = /versionName' scripts/prepare-android.mjs
           echo "Authority-corrected remediation: PASS"
@@ -154,7 +155,8 @@ jobs:
           test -f android/app/src/main/java/app/codedump/tool/MainActivity.kt
           test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
           test -f android/app/src/main/AndroidManifest.xml
-          grep -q 'override fun onBackPressed()' android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q 'onBackPressedDispatcher.addCallback' android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q 'OnBackPressedCallback' android/app/src/main/java/app/codedump/tool/MainActivity.kt
           APP_VERSION="$(node -p "require('./package.json').version")"
           grep -Fq "versionName \"$APP_VERSION\"" android/app/build.gradle
           grep -q "com.android.tools.build:gradle:8.13.2" android/build.gradle
@@ -228,7 +230,7 @@ jobs:
           printf 'source_transport_sha256=%s\nprior_android_patch_sha256=%s\nauthority_corrected_patch_sha256=%s\napp_version=%s\npackage=%s\ncheckout=%s\nsetup_node=%s\nsetup_java=%s\nsetup_android=%s\nsetup_gradle=%s\nupload_artifact=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
             '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
-            '115b9e3e1c1d7480fc49822bbafc512ab91ea7a41f1053dce4ea1bc414775b7a' \
+            '8210517fa2f7da55dccd86c51f9e8eedd4be9fb6481e848058f1d1bbe8126251' \
             '1.1.0' \
             'app.codedump.tool' \
             'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \

@@ -1,22 +1,31 @@
-name: Build Code Dump Tool APK
+name: Code Dump Tool R4 Hardened APK Build
 
 on:
   push:
     branches:
-      - codedump-apk-build-25082026
+      - codedump-r4-apk-rebuild-25082026
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: codedump-r4-apk-rebuild
+  cancel-in-progress: true
+
+env:
+  CI: true
+
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
       - name: Checkout isolated build branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
 
       - name: Reconstruct and verify Code Dump Tool source
         shell: bash
@@ -41,7 +50,7 @@ jobs:
           test -f "$BUILD_DIR/web/index.html"
           echo "Source reconstruction and SHA-256 verification: PASS"
 
-      - name: Apply audited Capacitor compile and lint fixes
+      - name: Apply audited Android fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -53,19 +62,19 @@ jobs:
           ! grep -q 'takePersistableUriPermission(uri, take)' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
           echo "Audited Android patch: PASS"
 
-      - name: Set up Node.js 22
-        uses: actions/setup-node@v4
+      - name: Set up Node 22
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
 
       - name: Install Android SDK API 36 and build tools
         shell: bash
@@ -73,23 +82,28 @@ jobs:
           set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
-          sdkmanager --list_installed
 
-      - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle and validate wrapper
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
-      - name: Generate lockfile and install pinned Capacitor dependencies reproducibly
+      - name: Generate and verify dependency lock
         working-directory: /tmp/cdt-build
         shell: bash
         run: |
           set -euo pipefail
-          node --version
-          npm --version
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           test -s package-lock.json
+          echo "60844314cd4a6da894912049390740425baf80d31766c12b2bc559f4e5d5651c  package-lock.json" | sha256sum -c -
           npm ci --no-audit --no-fund
           npm ls @capacitor/core @capacitor/android @capacitor/cli
-          sha256sum package-lock.json
+
+      - name: Run full source regression
+        working-directory: /tmp/cdt-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          node tests/android_conversion_static.test.js
 
       - name: Generate Capacitor Android project
         working-directory: /tmp/cdt-build
@@ -101,62 +115,63 @@ jobs:
           test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
           test -f android/app/src/main/AndroidManifest.xml
 
-      - name: Verify Gradle runtime
-        working-directory: /tmp/cdt-build/android
-        shell: bash
-        run: |
-          set -euo pipefail
-          chmod +x gradlew
-          ./gradlew --version
-
-      - name: Compile, test and lint Android app
+      - name: Compile test lint and package Android outputs
         id: gradle_gate
         working-directory: /tmp/cdt-build/android
         shell: bash
         run: |
           set +e
-          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug > /tmp/gradle-build.log 2>&1
+          ./gradlew --no-daemon --stacktrace \
+            testDebugUnitTest \
+            lintDebug \
+            assembleDebug \
+            assembleRelease \
+            bundleRelease > /tmp/gradle-build.log 2>&1
           rc=$?
           echo "gradle_exit_code=$rc"
           if [ "$rc" -ne 0 ]; then
             echo '--- FILTERED GRADLE ROOT CAUSE ---'
-            grep -E -n '(^e: |error:|Error:|FAILURE:|What went wrong|Execution failed|Caused by:|Unresolved reference|Compilation error|Android resource linking failed|Manifest merger failed|Lint found)' /tmp/gradle-build.log | tail -n 140 || true
+            grep -E -n '(^e: |error:|Error:|FAILURE:|What went wrong|Execution failed|Caused by:|Unresolved reference|Compilation error|Android resource linking failed|Manifest merger failed|Lint found|Signing)' /tmp/gradle-build.log | tail -n 180 || true
             echo '--- GRADLE LOG TAIL ---'
-            tail -n 180 /tmp/gradle-build.log || true
+            tail -n 220 /tmp/gradle-build.log || true
           fi
           exit "$rc"
 
-      - name: Upload Gradle diagnostic log on failure
+      - name: Upload Gradle diagnostics on failure
         if: failure() && steps.gradle_gate.conclusion == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: code-dump-tool-gradle-diagnostics-${{ github.run_number }}
+          name: code-dump-tool-r4-gradle-failure-${{ github.run_number }}
           path: /tmp/gradle-build.log
           if-no-files-found: error
           retention-days: 7
 
-      - name: Stage APK and integrity evidence
+      - name: Stage APK AAB and integrity evidence
+        if: success()
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          APK=/tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk
-          test -s "$APK"
-          cp "$APK" artifacts/code-dump-tool-debug.apk
+          cp /tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk artifacts/code-dump-tool-r4-debug.apk
+          find /tmp/cdt-build/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
+          find /tmp/cdt-build/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
           cp /tmp/cdt-build/package-lock.json artifacts/package-lock.json
-          sha256sum artifacts/code-dump-tool-debug.apk artifacts/package-lock.json | tee artifacts/SHA256SUMS.txt
-          printf 'baseline_source_sha256=%s\nandroid_patch_sha256=%s\ncommit=%s\nrun=%s\n' \
+          if test -f /tmp/cdt-build/android/app/build/reports/lint-results-debug.html; then
+            cp /tmp/cdt-build/android/app/build/reports/lint-results-debug.html artifacts/
+          fi
+          (cd artifacts && sha256sum *.apk *.aab package-lock.json 2>/dev/null | sort > SHA256SUMS.txt)
+          cat artifacts/SHA256SUMS.txt
+          printf 'baseline_source_sha256=%s\nandroid_patch_sha256=%s\npackage_lock_sha256=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
             '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
+            '60844314cd4a6da894912049390740425baf80d31766c12b2bc559f4e5d5651c' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" > artifacts/BUILD_EVIDENCE.txt
-          if test -f /tmp/cdt-build/android/app/build/reports/lint-results-debug.html; then
-            cp /tmp/cdt-build/android/app/build/reports/lint-results-debug.html artifacts/lint-results-debug.html
-          fi
 
-      - name: Upload verified APK artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload verified Android artifacts
+        if: success()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: code-dump-tool-apk-${{ github.run_number }}
+          name: code-dump-tool-r4-${{ github.run_number }}
           path: artifacts/
           if-no-files-found: error
           retention-days: 30

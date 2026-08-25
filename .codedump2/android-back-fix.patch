@@ -1,0 +1,67 @@
+diff --git a/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt b/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+index ee40e5f..41f249c 100644
+--- a/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
++++ b/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+@@ -1,11 +1,40 @@
+ package app.codedump.tool
+ 
+ import android.os.Bundle
++import androidx.activity.OnBackPressedCallback
+ import com.getcapacitor.BridgeActivity
+ 
+ class MainActivity : BridgeActivity() {
++    private lateinit var webBackCallback: OnBackPressedCallback
++
+     override fun onCreate(savedInstanceState: Bundle?) {
+         registerPlugin(CodeDumpNativePlugin::class.java)
+         super.onCreate(savedInstanceState)
++
++        webBackCallback = object : OnBackPressedCallback(true) {
++            override fun handleOnBackPressed() {
++                val webView = bridge?.webView
++                if (webView == null) {
++                    dispatchDefaultBack()
++                    return
++                }
++                webView.evaluateJavascript(
++                    "Boolean(window.__codeDumpHandleAndroidBack && window.__codeDumpHandleAndroidBack())"
++                ) { handled ->
++                    if (handled != "true") dispatchDefaultBack()
++                }
++            }
++        }
++        onBackPressedDispatcher.addCallback(this, webBackCallback)
++    }
++
++    private fun dispatchDefaultBack() {
++        if (!::webBackCallback.isInitialized) {
++            finish()
++            return
++        }
++        webBackCallback.isEnabled = false
++        onBackPressedDispatcher.onBackPressed()
++        webBackCallback.isEnabled = true
+     }
+ }
+diff --git a/web/app.js b/web/app.js
+index 56afae1..596cb55 100644
+--- a/web/app.js
++++ b/web/app.js
+@@ -1459,6 +1459,17 @@
+     }, 160);
+   }
+ 
++  function handleAndroidBack() {
++    if (!state.openSheetId) return false;
++    const activeSheet = state.openSheetId;
++    const backdrop = $(activeSheet);
++    if (!backdrop || backdrop.hidden) return false;
++    closeSheet(activeSheet);
++    return true;
++  }
++
++  window.__codeDumpHandleAndroidBack = handleAndroidBack;
++
+   function handleModalKeydown(event) {
+     if (!state.openSheetId) return;
+     const backdrop = $(state.openSheetId);

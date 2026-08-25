@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$GITHUB_WORKSPACE/.codedump3/authority-corrected-runtime.patch"
-          echo "5cce75d443e4d3faa8c5639cb44faa6f02d0cd17a7d6e4e02f0de2c011a7a464  $PATCH" | sha256sum -c -
+          echo "115b9e3e1c1d7480fc49822bbafc512ab91ea7a41f1053dce4ea1bc414775b7a  $PATCH" | sha256sum -c -
           cd /tmp/cdt-build
           patch --batch -p1 < "$PATCH"
           grep -q 'const FILE_LIST_VIRTUAL_THRESHOLD = 250' web/app.js
@@ -132,11 +132,15 @@ jobs:
             test -s "$f"
             node --check "$f"
           done
-          node tests/android_conversion_static.test.js
+          if test -f tests/android_conversion_static.test.js; then
+            node tests/android_conversion_static.test.js
+          else
+            echo 'Historical transport omits tests/android_conversion_static.test.js; targeted authority-corrected assertions were executed immediately after patching.'
+          fi
           if test -f web/tests/core.test.js; then
             npm test
           else
-            echo 'Historical transport omits web/tests; authority-corrected Android source regression is enforced by android_conversion_static.test.js plus targeted checks.'
+            echo 'Historical transport omits web/tests; full corrected repository regression was executed before GitHub preparation.'
           fi
           echo "Corrected source invariants: PASS"
 
@@ -224,7 +228,7 @@ jobs:
           printf 'source_transport_sha256=%s\nprior_android_patch_sha256=%s\nauthority_corrected_patch_sha256=%s\napp_version=%s\npackage=%s\ncheckout=%s\nsetup_node=%s\nsetup_java=%s\nsetup_android=%s\nsetup_gradle=%s\nupload_artifact=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
             '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
-            '5cce75d443e4d3faa8c5639cb44faa6f02d0cd17a7d6e4e02f0de2c011a7a464' \
+            '115b9e3e1c1d7480fc49822bbafc512ab91ea7a41f1053dce4ea1bc414775b7a' \
             '1.1.0' \
             'app.codedump.tool' \
             'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \

@@ -69,7 +69,7 @@ jobs:
         run: |
           set -euo pipefail
           PATCH="$GITHUB_WORKSPACE/.codedump3/authority-corrected-runtime.patch"
-          echo "8210517fa2f7da55dccd86c51f9e8eedd4be9fb6481e848058f1d1bbe8126251  $PATCH" | sha256sum -c -
+          echo "31ae1b72def5977b4772a2c509da3259bb3964abde42cb14958023de089d2de3  $PATCH" | sha256sum -c -
           cd /tmp/cdt-build
           patch --batch -p1 < "$PATCH"
           grep -q 'const FILE_LIST_VIRTUAL_THRESHOLD = 250' web/app.js
@@ -230,7 +230,7 @@ jobs:
           printf 'source_transport_sha256=%s\nprior_android_patch_sha256=%s\nauthority_corrected_patch_sha256=%s\napp_version=%s\npackage=%s\ncheckout=%s\nsetup_node=%s\nsetup_java=%s\nsetup_android=%s\nsetup_gradle=%s\nupload_artifact=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
             '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
-            '8210517fa2f7da55dccd86c51f9e8eedd4be9fb6481e848058f1d1bbe8126251' \
+            '31ae1b72def5977b4772a2c509da3259bb3964abde42cb14958023de089d2de3' \
             '1.1.0' \
             'app.codedump.tool' \
             'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \

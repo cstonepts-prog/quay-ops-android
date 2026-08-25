@@ -15,6 +15,18 @@ if old not in s:
     raise SystemExit('Continue selector source pattern missing')
 s = s.replace(old, new, 1)
 
+old = "tap_node 'CodeDumpFixture.zip' || fail 'SAF fixture targetable'"
+new = '''if ! tap_node 'CodeDumpFixture.zip'; then
+  tap_node 'Show roots' || fail 'SAF roots drawer targetable when fixture absent from Recents'
+  sleep 2
+  tap_node 'Downloads' || fail 'Downloads root targetable in SAF drawer'
+  sleep 3
+  tap_node 'CodeDumpFixture.zip' || fail 'SAF fixture targetable from Downloads root'
+fi'''
+if old not in s:
+    raise SystemExit('SAF fixture selector source pattern missing')
+s = s.replace(old, new, 1)
+
 visible_loop_download = r'''DOWNLOAD_VISIBLE=0
 for _ in $(seq 1 24); do
   dump_ui "$EVID/download-visibility.xml" || true
@@ -108,6 +120,8 @@ s = s.replace(old, visible_loop_share, 1)
 p.write_text(s)
 PY
 grep -q "tap_node 'continueZip'" "$TMP"
+grep -q "tap_node 'Show roots'" "$TMP"
+grep -q "tap_node 'Downloads'" "$TMP"
 grep -q "resource-id') != 'downloadDump'" "$TMP"
 grep -q "tap_node 'android:id/button1'" "$TMP"
 grep -q "app resumed after native save confirmation" "$TMP"

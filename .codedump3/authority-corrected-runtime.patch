@@ -1,31 +1,33 @@
 --- a/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
 +++ b/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
-@@ -8,4 +8,26 @@
+@@ -8,4 +8,27 @@
          registerPlugin(CodeDumpNativePlugin::class.java)
          super.onCreate(savedInstanceState)
-     }
 +
-+    @Suppress("DEPRECATION")
-+    override fun onBackPressed() {
-+        val webView = bridge?.webView
-+        if (webView == null) {
-+            fallbackBack()
-+            return
-+        }
++        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
++            override fun handleOnBackPressed() {
++                val webView = bridge?.webView
++                if (webView == null) {
++                    fallThrough()
++                    return
++                }
 +
-+        webView.evaluateJavascript(
-+            "Boolean(window.__codeDumpHandleNativeBack && window.__codeDumpHandleNativeBack())"
-+        ) { handled ->
-+            if (handled != "true") {
-+                runOnUiThread { fallbackBack() }
++                webView.evaluateJavascript(
++                    "Boolean(window.__codeDumpHandleNativeBack && window.__codeDumpHandleNativeBack())"
++                ) { handled ->
++                    if (handled != "true") {
++                        runOnUiThread { fallThrough() }
++                    }
++                }
 +            }
-+        }
-+    }
 +
-+    @Suppress("DEPRECATION")
-+    private fun fallbackBack() {
-+        super.onBackPressed()
-+    }
++            private fun fallThrough() {
++                isEnabled = false
++                onBackPressedDispatcher.onBackPressed()
++                isEnabled = true
++            }
++        })
+     }
  }
 --- a/scripts/prepare-android.mjs
 +++ b/scripts/prepare-android.mjs

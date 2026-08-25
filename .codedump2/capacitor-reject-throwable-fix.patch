@@ -99,16 +99,3 @@
      private fun requestedMaxBytes(call: PluginCall): Long {
          val requested = call.getDouble("maxBytes")?.toLong() ?: absoluteNativeImportLimitBytes
          return requested.coerceIn(1L, absoluteNativeImportLimitBytes)
---- a/tests/android_conversion_static.test.js
-+++ b/tests/android_conversion_static.test.js
-@@ -40,6 +40,10 @@
- }
- pass('native bridge exposes the full picker/storage/export/share/clipboard/intent contract');
- 
-+assert.ok(plugin.includes('private fun rejectionException(t: Throwable): Exception'));
-+assert.ok(!/call\.reject\([^\n]*,\s*t\)/.test(plugin));
-+pass('Capacitor rejection paths convert Throwable values to Exception-compatible causes');
-+
- assert.ok(plugin.includes('Intent.ACTION_OPEN_DOCUMENT'));
- assert.ok(plugin.includes('Intent.EXTRA_ALLOW_MULTIPLE'));
- assert.ok(plugin.includes('Intent.ACTION_OPEN_DOCUMENT_TREE'));

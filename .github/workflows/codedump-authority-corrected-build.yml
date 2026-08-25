@@ -1,0 +1,245 @@
+name: Code Dump Tool R5 Authority-Corrected Android Build
+
+on:
+  push:
+    branches:
+      - codedump-r5-authority-corrected-build-25082026
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codedump-r5-authority-corrected-build
+  cancel-in-progress: true
+
+env:
+  CI: true
+
+jobs:
+  verify-and-build:
+    name: Verify corrected source and build APK/AAB
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout isolated build branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Reconstruct and verify EXEC002 R5 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_B64=/tmp/cdt-build.b64
+          BUILD_XZ=/tmp/cdt-build.tar.xz
+          BUILD_DIR=/tmp/cdt-build
+          head -c 9000 .codedump2/part00.b64 > "$BUILD_B64"
+          for i in $(seq -w 1 13); do
+            cat ".codedump2/part${i}.b64" >> "$BUILD_B64"
+          done
+          test "$(wc -c < "$BUILD_B64")" -eq 123384
+          base64 --decode "$BUILD_B64" > "$BUILD_XZ"
+          echo "02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16  $BUILD_XZ" | sha256sum -c -
+          rm -rf "$BUILD_DIR"
+          mkdir -p "$BUILD_DIR"
+          tar -xJf "$BUILD_XZ" -C "$BUILD_DIR"
+          test -f "$BUILD_DIR/package.json"
+          test -f "$BUILD_DIR/capacitor.config.json"
+          test -f "$BUILD_DIR/scripts/prepare-android.mjs"
+          test -f "$BUILD_DIR/native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt"
+          test -f "$BUILD_DIR/web/index.html"
+          echo "EXEC002 R5 source reconstruction: PASS"
+
+      - name: Apply previously verified Capacitor Android fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/.codedump2/capacitor-reject-throwable-fix.patch"
+          echo "07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba  $PATCH" | sha256sum -c -
+          cd /tmp/cdt-build
+          patch --batch -p1 < "$PATCH"
+          grep -q 'private fun rejectionException(t: Throwable): Exception' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          ! grep -q 'takePersistableUriPermission(uri, take)' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          echo "Prior Capacitor remediation: PASS"
+
+      - name: Apply authority-corrected audit remediation
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/.codedump3/authority-corrected-runtime.patch"
+          echo "5cce75d443e4d3faa8c5639cb44faa6f02d0cd17a7d6e4e02f0de2c011a7a464  $PATCH" | sha256sum -c -
+          cd /tmp/cdt-build
+          patch --batch -p1 < "$PATCH"
+          grep -q 'const FILE_LIST_VIRTUAL_THRESHOLD = 250' web/app.js
+          ! grep -q 'rowCount > 400' web/app.js
+          grep -q '__codeDumpHandleNativeBack' web/app.js
+          grep -q 'override fun onBackPressed()' native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
+          grep -q 'const packageMeta = JSON.parse' scripts/prepare-android.mjs
+          grep -q 'const versionNamePattern = /versionName' scripts/prepare-android.mjs
+          echo "Authority-corrected remediation: PASS"
+
+      - name: Set up Node 22
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Set up Java 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4.0.1
+        with:
+          cmdline-tools-version: '14742923'
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK API 36 and Build Tools 36.0.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-36/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2"
+          test -x "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner"
+
+      - name: Set up Gradle cache and wrapper validation
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Generate and verify dependency lock
+        working-directory: /tmp/cdt-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          test -s package-lock.json
+          echo "60844314cd4a6da894912049390740425baf80d31766c12b2bc559f4e5d5651c  package-lock.json" | sha256sum -c -
+          npm ci --no-audit --no-fund
+          npm ls @capacitor/core @capacitor/android @capacitor/cli
+
+      - name: Verify corrected source invariants
+        working-directory: /tmp/cdt-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e "const p=require('./package.json'); if (p.version !== '1.1.0') throw new Error('Unexpected app version '+p.version)"
+          for f in web/app.js web/core.js web/platform.js web/archive-core.js scripts/prepare-android.mjs; do
+            test -s "$f"
+            node --check "$f"
+          done
+          node tests/android_conversion_static.test.js
+          if test -f web/tests/core.test.js; then
+            npm test
+          else
+            echo 'Historical transport omits web/tests; authority-corrected Android source regression is enforced by android_conversion_static.test.js plus targeted checks.'
+          fi
+          echo "Corrected source invariants: PASS"
+
+      - name: Generate Capacitor Android project
+        working-directory: /tmp/cdt-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run android:prepare
+          test -x android/gradlew || chmod +x android/gradlew
+          test -f android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          test -f android/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          test -f android/app/src/main/AndroidManifest.xml
+          grep -q 'override fun onBackPressed()' android/app/src/main/java/app/codedump/tool/MainActivity.kt
+          APP_VERSION="$(node -p "require('./package.json').version")"
+          grep -Fq "versionName \"$APP_VERSION\"" android/app/build.gradle
+          grep -q "com.android.tools.build:gradle:8.13.2" android/build.gradle
+          grep -q "org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.20" android/build.gradle
+          grep -q "androidx.documentfile:documentfile:1.1.0" android/app/build.gradle
+          grep -q "sourceCompatibility JavaVersion.VERSION_21" android/app/build.gradle
+          grep -q "jvmTarget = '21'" android/app/build.gradle
+          echo "Generated Android project/version identity: PASS"
+
+      - name: Compile test lint and package Android outputs
+        id: gradle_gate
+        working-directory: /tmp/cdt-build/android
+        shell: bash
+        run: |
+          set +e
+          ./gradlew --no-daemon --stacktrace \
+            testDebugUnitTest \
+            lintDebug \
+            assembleDebug \
+            assembleRelease \
+            bundleRelease > /tmp/gradle-build.log 2>&1
+          rc=$?
+          echo "gradle_exit_code=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo '--- FILTERED GRADLE ROOT CAUSE ---'
+            grep -E -n '(^e: |error:|Error:|FAILURE:|What went wrong|Execution failed|Caused by:|Unresolved reference|Compilation error|Android resource linking failed|Manifest merger failed|Lint found|Signing)' /tmp/gradle-build.log | tail -n 180 || true
+            echo '--- GRADLE LOG TAIL ---'
+            tail -n 220 /tmp/gradle-build.log || true
+          fi
+          exit "$rc"
+
+      - name: Verify APK identity and Android signing
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=/tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/aapt2" dump badging "$APK" | tee /tmp/APK_BADGING.txt
+          grep -q "package: name='app.codedump.tool'" /tmp/APK_BADGING.txt
+          grep -q "versionName='1.1.0'" /tmp/APK_BADGING.txt
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$APK" | tee /tmp/APKSIGNER_VERIFY.txt
+          echo "APK package/version/signing verification: PASS"
+
+      - name: Upload Gradle diagnostics on failure
+        if: failure() && steps.gradle_gate.conclusion == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-dump-tool-authority-corrected-gradle-failure-${{ github.run_number }}
+          path: /tmp/gradle-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Stage APK AAB and integrity evidence
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          cp /tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk artifacts/code-dump-tool-v1.1.0-authority-corrected-debug.apk
+          find /tmp/cdt-build/android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' -exec cp {} artifacts/ \;
+          find /tmp/cdt-build/android/app/build/outputs/bundle/release -maxdepth 1 -type f -name '*.aab' -exec cp {} artifacts/ \;
+          cp /tmp/cdt-build/package-lock.json artifacts/package-lock.json
+          cp /tmp/APK_BADGING.txt artifacts/APK_BADGING.txt
+          cp /tmp/APKSIGNER_VERIFY.txt artifacts/APKSIGNER_VERIFY.txt
+          if test -f /tmp/cdt-build/android/app/build/reports/lint-results-debug.html; then
+            cp /tmp/cdt-build/android/app/build/reports/lint-results-debug.html artifacts/
+          fi
+          (cd artifacts && sha256sum *.apk *.aab package-lock.json 2>/dev/null | sort > SHA256SUMS.txt)
+          cat artifacts/SHA256SUMS.txt
+          printf 'source_transport_sha256=%s\nprior_android_patch_sha256=%s\nauthority_corrected_patch_sha256=%s\napp_version=%s\npackage=%s\ncheckout=%s\nsetup_node=%s\nsetup_java=%s\nsetup_android=%s\nsetup_gradle=%s\nupload_artifact=%s\ncommit=%s\nrun=%s\n' \
+            '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
+            '07a1266095df13ee0016c00b895a77b70d362af6642540f9dcc54107b5852fba' \
+            '5cce75d443e4d3faa8c5639cb44faa6f02d0cd17a7d6e4e02f0de2c011a7a464' \
+            '1.1.0' \
+            'app.codedump.tool' \
+            'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' \
+            'actions/setup-node@820762786026740c76f36085b0efc47a31fe5020' \
+            'actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961' \
+            'android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699' \
+            'gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb' \
+            'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a' \
+            "$GITHUB_SHA" "$GITHUB_RUN_ID" > artifacts/BUILD_EVIDENCE.txt
+
+      - name: Upload verified Android artifacts
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: code-dump-tool-authority-corrected-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 30

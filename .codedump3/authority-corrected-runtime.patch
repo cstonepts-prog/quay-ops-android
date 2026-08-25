@@ -47,38 +47,6 @@
    return out;
  });
  
---- a/tests/android_conversion_static.test.js
-+++ b/tests/android_conversion_static.test.js
-@@ -35,6 +35,14 @@
- assert.ok(activity.indexOf('registerPlugin(CodeDumpNativePlugin::class.java)') < activity.indexOf('super.onCreate(savedInstanceState)'));
- pass('custom Kotlin plugin is registered before BridgeActivity creates the Capacitor bridge');
- 
-+assert.ok(activity.includes('override fun onBackPressed()'));
-+assert.ok(activity.includes('__codeDumpHandleNativeBack'));
-+assert.ok(activity.includes('fallbackBack()'));
-+assert.ok(app.includes('function handleNativeBack()'));
-+assert.ok(app.includes('window.__codeDumpHandleNativeBack = handleNativeBack'));
-+assert.ok(app.includes('if (state.openSheetId)'));
-+pass('Android Back closes an open app sheet before falling back to normal activity navigation');
-+
- for (const method of ['pickFile','pickFiles','pickDirectory','pickOutputDirectory','writeTextFile','beginExport','appendExportChunk','finishExport','abortExport','shareText','copyText','getLaunchIntent']) {
-   assert.ok(plugin.includes(`fun ${method}(call: PluginCall)`), `missing ${method}`);
- }
-@@ -122,9 +130,13 @@
- assert.ok(prepare.includes("androidx.documentfile:documentfile:1.1.0"));
- assert.ok(prepare.includes("sourceCompatibility JavaVersion.VERSION_21"));
- assert.ok(prepare.includes("jvmTarget = '21'"));
-+assert.equal(pkg.version, '1.1.0');
-+assert.ok(prepare.includes("const packageMeta = JSON.parse"));
-+assert.ok(prepare.includes('const versionNamePattern = /versionName'));
-+assert.ok(prepare.includes('`versionName \"${packageMeta.version}\"`'));
- assert.ok(prepare.includes("['cap', 'add', 'android']"));
- assert.ok(prepare.includes("['cap', 'copy', 'android']"));
--pass('Android generator pins Kotlin/native dependencies and Java/Kotlin 21 while using Capacitor generation/copy flow');
-+pass('Android generator pins native build dependencies, Java/Kotlin 21 and product versionName while using Capacitor generation/copy flow');
- 
- assert.ok(prepare.includes("icon-512.png"));
- assert.ok(prepare.includes("code_dump_icon.png"));
 --- a/web/app.js
 +++ b/web/app.js
 @@ -8,6 +8,7 @@

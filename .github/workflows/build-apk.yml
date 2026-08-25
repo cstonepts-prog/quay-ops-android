@@ -95,11 +95,30 @@ jobs:
           ./gradlew --version
 
       - name: Compile, test and lint Android app
+        id: gradle_gate
         working-directory: /tmp/cdt-build/android
         shell: bash
         run: |
-          set -euo pipefail
-          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug
+          set +e
+          ./gradlew --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug > /tmp/gradle-build.log 2>&1
+          rc=$?
+          echo "gradle_exit_code=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo '--- FILTERED GRADLE ROOT CAUSE ---'
+            grep -E -n '(^e: |error:|FAILURE:|What went wrong|Execution failed|Caused by:|Unresolved reference|Compilation error|Android resource linking failed|Manifest merger failed)' /tmp/gradle-build.log | tail -n 120 || true
+            echo '--- GRADLE LOG TAIL ---'
+            tail -n 160 /tmp/gradle-build.log || true
+          fi
+          exit "$rc"
+
+      - name: Upload Gradle diagnostic log on failure
+        if: failure() && steps.gradle_gate.conclusion == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-dump-tool-gradle-diagnostics-${{ github.run_number }}
+          path: /tmp/gradle-build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Stage APK and integrity evidence
         shell: bash

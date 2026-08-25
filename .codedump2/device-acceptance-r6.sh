@@ -134,7 +134,10 @@ top_has_app
 capture 07-saf-zip-return
 assert_no_fatal saf-zip-preflight
 assert_ui "$EVID/07-saf-zip-return.xml" 'ZIP preflight|Continue extraction|continueZip' 'SAF ZIP preflight completed'
-tap_node 'Continue' || fail 'ZIP Continue targetable'
+adb shell input swipe 540 1880 540 900 500
+sleep 2
+capture 07b-preflight-scrolled
+tap_node 'Continue' || fail 'ZIP Continue targetable after scrolling above fixed navigation'
 sleep 6
 top_has_app
 capture 08-project-imported
@@ -142,7 +145,9 @@ assert_no_fatal zip-preflight-continue
 assert_ui "$EVID/08-project-imported.xml" 'Generated dump|Download part|downloadDump' 'SAF ZIP extraction produced generated dump'
 pass 'SAF ZIP selected, preflighted and extracted'
 
-tap_node 'Download part' || fail 'Download part targetable'
+adb shell input swipe 540 1850 540 850 500 || true
+sleep 2
+tap_node 'Download part' || fail 'Download part targetable after scrolling'
 sleep 3
 capture 09-native-save-picker
 adb shell dumpsys activity activities | grep -Eiq 'documentsui|DocumentsActivity|com\.google\.android\.documentsui|com\.android\.documentsui' || fail 'native save picker opened'
@@ -154,7 +159,9 @@ capture 09b-native-save-return
 assert_no_fatal native-save-complete
 if grep -Eqi 'Export failed|Could not create output|Could not write export' "$EVID/09b-native-save-return.xml"; then fail 'native save completed'; else pass 'native save completed'; fi
 
-tap_node 'Share part' || fail 'Share part targetable'
+adb shell input swipe 540 1850 540 850 500 || true
+sleep 2
+tap_node 'Share part' || fail 'Share part targetable after scrolling'
 sleep 3
 capture 10-share-sheet
 adb shell dumpsys activity activities | grep -Eiq 'resolver|chooser|IntentResolver|ChooserActivity|android.*resolver' || fail 'native share chooser opened'

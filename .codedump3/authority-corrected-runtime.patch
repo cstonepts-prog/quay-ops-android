@@ -1,6 +1,6 @@
 --- a/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
 +++ b/native/android-overlay/app/src/main/java/app/codedump/tool/MainActivity.kt
-@@ -8,4 +8,27 @@
+@@ -8,4 +8,28 @@
          registerPlugin(CodeDumpNativePlugin::class.java)
          super.onCreate(savedInstanceState)
 +

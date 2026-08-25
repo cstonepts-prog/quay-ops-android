@@ -27,8 +27,22 @@
              }
          }
      }
-@@ -183,7 +183,7 @@
-             context.contentResolver.takePersistableUriPermission(uri, take)
+@@ -179,11 +179,19 @@
+         }
+         try {
+             val flags = result.data?.flags ?: 0
+-            val take = flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+-            context.contentResolver.takePersistableUriPermission(uri, take)
++            val hasRead = flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0
++            val hasWrite = flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION != 0
++            when {
++                hasRead && hasWrite -> context.contentResolver.takePersistableUriPermission(
++                    uri,
++                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
++                )
++                hasWrite -> context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
++                hasRead -> context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
++            }
              call.resolve(JSObject().put("treeUri", uri.toString()))
          } catch (t: Throwable) {
 -            call.reject("Could not retain access to selected directory: ${t.message}", t)
@@ -36,7 +50,7 @@
          }
      }
  
-@@ -217,7 +217,7 @@
+@@ -217,7 +225,7 @@
                  }
                  call.resolve()
              } catch (t: Throwable) {
@@ -45,7 +59,7 @@
              }
          }
      }
-@@ -234,7 +234,7 @@
+@@ -234,7 +242,7 @@
                  exports[sessionId] = ExportSession(FileOutputStream(file), "share", file)
                  call.resolve(JSObject().put("sessionId", sessionId))
              } catch (t: Throwable) {
@@ -54,7 +68,7 @@
              }
              return
          }
-@@ -261,7 +261,7 @@
+@@ -261,7 +269,7 @@
              exports[sessionId] = ExportSession(stream, "save", uri = uri)
              call.resolve(JSObject().put("sessionId", sessionId))
          } catch (t: Throwable) {
@@ -63,7 +77,7 @@
          }
      }
  
-@@ -277,7 +277,7 @@
+@@ -277,7 +285,7 @@
              } catch (t: Throwable) {
                  val failed = exports.remove(sessionId)
                  cleanupExportSession(failed)
@@ -72,7 +86,7 @@
              }
          }
      }
-@@ -293,7 +293,7 @@
+@@ -293,7 +301,7 @@
              call.resolve()
          } catch (t: Throwable) {
              cleanupExportSession(session)
@@ -81,7 +95,7 @@
          }
      }
  
-@@ -338,7 +338,7 @@
+@@ -338,7 +346,7 @@
                  lastQueuedIntentUri = uri.toString()
                  call.resolve(JSObject().put("entry", entry))
              } catch (t: Throwable) {
@@ -90,7 +104,7 @@
              }
          }
      }
-@@ -415,6 +415,8 @@
+@@ -415,6 +423,8 @@
          }
      }
  
@@ -99,3 +113,17 @@
      private fun requestedMaxBytes(call: PluginCall): Long {
          val requested = call.getDouble("maxBytes")?.toLong() ?: absoluteNativeImportLimitBytes
          return requested.coerceIn(1L, absoluteNativeImportLimitBytes)
+@@ -496,8 +506,11 @@
+     }
+ 
+     private fun takeReadPermission(uri: Uri, flags: Int) {
+-        val take = flags and (Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+-        if (take != 0) runCatching { context.contentResolver.takePersistableUriPermission(uri, take) }
++        if (flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0) {
++            runCatching {
++                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
++            }
++        }
+     }
+ 
+     private fun validatedSegments(path: String): List<String> {

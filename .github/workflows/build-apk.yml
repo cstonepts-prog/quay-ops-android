@@ -41,10 +41,28 @@ jobs:
           test -f "$BUILD_DIR/web/index.html"
           echo "Source reconstruction and SHA-256 verification: PASS"
 
+      - name: Apply audited Capacitor compile fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          PATCH="$GITHUB_WORKSPACE/.codedump2/capacitor-reject-throwable-fix.patch"
+          echo "43f62ec1a2219bd3218f24b676a694db1d6a18683a43a42c85f18504e49c0639  $PATCH" | sha256sum -c -
+          cd /tmp/cdt-build
+          patch -p1 < "$PATCH"
+          grep -q 'private fun rejectionException(t: Throwable): Exception' native/android-overlay/app/src/main/java/app/codedump/tool/CodeDumpNativePlugin.kt
+          echo "Audited compile patch: PASS"
+
       - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: Run complete source regression
+        working-directory: /tmp/cdt-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
 
       - name: Set up Java 21
         uses: actions/setup-java@v4
@@ -66,15 +84,18 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Install pinned Capacitor dependencies
+      - name: Generate lockfile and install pinned Capacitor dependencies reproducibly
         working-directory: /tmp/cdt-build
         shell: bash
         run: |
           set -euo pipefail
           node --version
           npm --version
-          npm install --no-audit --no-fund --save-exact
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          test -s package-lock.json
+          npm ci --no-audit --no-fund
           npm ls @capacitor/core @capacitor/android @capacitor/cli
+          sha256sum package-lock.json
 
       - name: Generate Capacitor Android project
         working-directory: /tmp/cdt-build
@@ -128,9 +149,11 @@ jobs:
           APK=/tmp/cdt-build/android/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           cp "$APK" artifacts/code-dump-tool-debug.apk
-          sha256sum artifacts/code-dump-tool-debug.apk | tee artifacts/SHA256SUMS.txt
-          printf 'source_sha256=%s\ncommit=%s\nrun=%s\n' \
+          cp /tmp/cdt-build/package-lock.json artifacts/package-lock.json
+          sha256sum artifacts/code-dump-tool-debug.apk artifacts/package-lock.json | tee artifacts/SHA256SUMS.txt
+          printf 'baseline_source_sha256=%s\ncompile_patch_sha256=%s\ncommit=%s\nrun=%s\n' \
             '02fe87bea2103f93571a52ec6936efe0153cb2fa47597229699f1af074ac5b16' \
+            '43f62ec1a2219bd3218f24b676a694db1d6a18683a43a42c85f18504e49c0639' \
             "$GITHUB_SHA" "$GITHUB_RUN_ID" > artifacts/BUILD_EVIDENCE.txt
           if test -f /tmp/cdt-build/android/app/build/reports/lint-results-debug.html; then
             cp /tmp/cdt-build/android/app/build/reports/lint-results-debug.html artifacts/lint-results-debug.html

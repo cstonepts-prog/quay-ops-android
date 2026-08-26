@@ -122,8 +122,8 @@ printf 'Code Dump SEND intent fixture\n' | adb shell run-as "$PKG" sh -c 'cat > 
 adb shell run-as "$PKG" ls -l cache/CodeDumpView.txt cache/CodeDumpSend.txt > "$EVID/fileprovider-fixtures.txt"
 '''
 new = r'''APP_DATA="/data/user/0/$PKG"
-printf 'Code Dump VIEW intent fixture\n' | adb shell run-as "$PKG" sh -c "cat > $APP_DATA/cache/CodeDumpView.txt"
-printf 'Code Dump SEND intent fixture\n' | adb shell run-as "$PKG" sh -c "cat > $APP_DATA/cache/CodeDumpSend.txt"
+printf 'Code Dump VIEW intent fixture\n' | adb shell run-as "$PKG" tee "$APP_DATA/cache/CodeDumpView.txt" >/dev/null
+printf 'Code Dump SEND intent fixture\n' | adb shell run-as "$PKG" tee "$APP_DATA/cache/CodeDumpSend.txt" >/dev/null
 adb shell run-as "$PKG" ls -l "$APP_DATA/cache/CodeDumpView.txt" "$APP_DATA/cache/CodeDumpSend.txt" > "$EVID/fileprovider-fixtures.txt"
 '''
 if old not in s:
@@ -139,5 +139,6 @@ grep -q "resource-id') != 'downloadDump'" "$TMP"
 grep -q "tap_node 'android:id/button1'" "$TMP"
 grep -q "app resumed after native save confirmation" "$TMP"
 grep -q "resource-id') != 'shareDump'" "$TMP"
-grep -q 'APP_DATA="/data/user/0/$PKG"' "$TMP"
+grep -q 'run-as "$PKG" tee "$APP_DATA/cache/CodeDumpView.txt"' "$TMP"
+grep -q 'run-as "$PKG" tee "$APP_DATA/cache/CodeDumpSend.txt"' "$TMP"
 bash "$TMP"
